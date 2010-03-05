@@ -159,11 +159,13 @@ def allowed_actions(request, slug):
 
 
 def _survey_questions_api(survey, questionData):
-    response=HttpResponse(mimetype='application/json')
+    response = HttpResponse(mimetype='application/json')
+    url = reverse('survey_detail', kwargs={'slug': survey.slug})
     dump({"id": survey.id,
           "title": survey.title,
           "tease": survey.tease,
           "description": survey.description,
+          "submit_url": url,
           "questions": questionData},
          response)
     return response
@@ -171,11 +173,8 @@ def _survey_questions_api(survey, questionData):
 
 def questions(request, slug):
     survey = _get_survey_or_404(slug)
-    questionData = {}
-    for q in survey.questions.all():
-        questionData[q.id] = {"question": q.question,
-                              "answers": q.parsed_options}
-    return _survey_questions_api(survey, questionData)
+    questions = survey.questions.all().order_by("order")
+    return _survey_questions_api(survey, [q.to_jsondata() for q in questions])
 
 
 def aggregate_results(request, slug):
@@ -226,6 +225,20 @@ def survey_results_json(request, slug):
     return response
     
 
+<<<<<<< local
+def survey_results_grid(request, slug):
+    survey=get_object_or_404(Survey.live, slug=slug)
+    submissions=survey.public_submissions()
+    # this might call the JSON view, or not.
+    return render_with_request(['crowdsourcing/%s_survey_grid.html' % survey.slug,
+                                'crowdsourcing/survey_grid.html'],
+                               dict(survey=survey,
+                                    submissions=submissions),
+                               request)
+
+
+=======
+>>>>>>> other
 def survey_results_map(request, slug):
     survey=get_object_or_404(Survey.live, slug=slug)
     location_fields=list(survey.get_public_location_fields())
@@ -259,7 +272,11 @@ def survey_results_archive(request, slug, page=None):
              page_obj=page_obj),
         request)
     
+<<<<<<< local
+    
+=======
 
+>>>>>>> other
 def survey_results_aggregate(request, slug):
     """
     this is where we generate graphs and all that good stuff.
@@ -308,9 +325,15 @@ def survey_report(request, slug, report='', page=None):
 
     return render_with_request(templates,
                                dict(survey=survey,
+<<<<<<< local
+                                    aggregate_fields=aggregate_fields,
+                                    submissions=submissions),
+                               request)    
+=======
                                     submissions=submissions,
                                     paginator=paginator,
                                     page_obj=page_obj,
                                     reports=reports,
                                     report=the_report),
                                request)
+>>>>>>> other

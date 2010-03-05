@@ -18,10 +18,9 @@ from . import settings as local_settings
 from positions.fields import PositionField
 
 try:
-    from .flickrsupport import sync_to_flickr
+    from .flickrsupport import sync_to_flickr, get_group_id
 except ImportError:
     logging.warn('no flickr support available')
-
     sync_to_flickr = None
 
 
@@ -42,6 +41,14 @@ class LiveSurveyManager(models.Manager):
             models.Q(ends_at__gt=now))
 
 
+class SurveyGroup(models.Model):
+    name = models.CharField(max_length=80)
+    slug = models.SlugField(unique=True)
+
+    def __unicode__(self):
+        return self.name
+
+
 class Survey(models.Model):
     title = models.CharField(max_length=80)
     slug = models.SlugField(unique=True)
@@ -60,8 +67,15 @@ class Survey(models.Model):
     ends_at = models.DateTimeField(null=True, blank=True)
     is_published = models.BooleanField(default=False)
     site = models.ForeignKey(Site)
-    # flickr integration
-    flickr_pool_id = models.CharField(max_length=60, blank=True)
+    survey_group = models.ForeignKey(SurveyGroup, null=True, blank=True)
+    flickr_group_id = models.CharField(
+        max_length=60,
+        blank=True,
+        editable=False)
+    flickr_group_name = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="E.g. WNYC Brian Lehrer Show's \"10 Questions That Count\"")
 
     def to_jsondata(self):
         return dict(title=self.title,
@@ -72,6 +86,9 @@ class Survey(models.Model):
 
     def save(self, **kwargs):
         self.survey_date = self.starts_at.date()
+        self.flickr_group_id = ""
+        if self.flickr_group_name and sync_to_flickr:
+            self.flickr_group_id = get_group_id(self.flickr_group_name)
         super(Survey, self).save(**kwargs)
 
     class Meta:
@@ -196,8 +213,10 @@ class Question(models.Model):
                     question=self.question,
                     required=self.required,
                     option_type=self.option_type,
+                    options=self.parsed_options,
                     answer_is_public=self.answer_is_public,
-                    options=self.parsed_options)
+                    cms_id=self.id,
+                    help_text=self.help_text)
 
     class Meta:
         ordering = ('order',)
@@ -315,18 +334,18 @@ class Answer(models.Model):
         ordering = ('question',)
 
     def save(self, **kwargs):
+        super(Answer, self).save(**kwargs)
         # or should this be in a signal?  Or build in an option
         # to manage asynchronously? @TBD
         if sync_to_flickr:
             survey = self.question.survey
-            if survey.flickr_pool_id:
+            if survey.flickr_group_id:
                 try:
-                    sync_to_flickr(self, survey.flickr_pool_id)
-                except:
-                    logging.exception("error in syncing to flickr")
-
-        super(Answer, self).save(**kwargs)
-
+                    sync_to_flickr(self, survey.flickr_group_id)
+                except Exception as ex:
+                    message = "error in syncing to flickr: %s" % str(ex)
+                    logging.exception(message)
+    
     def __unicode__(self):
         return unicode(self.question)
 

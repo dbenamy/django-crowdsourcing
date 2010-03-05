@@ -69,7 +69,6 @@ class BaseAnswerForm(Form):
             return
         ans = Answer()
         if self.submission:
-            print self, self.submission, ans
             ans.submission = self.submission
         ans.question = self.question
         ans.value = self.cleaned_data['answer']
@@ -120,8 +119,13 @@ class VideoAnswer(BaseAnswerForm):
 
     def clean_answer(self):
         value = self.cleaned_data['answer']
-        if value and not any(re.match(v, value) for v in VIDEO_URL_PATTERNS):
-            raise ValidationError(_("A video url is required."))
+        if value:
+            matches = [re.match(v, value) for v in VIDEO_URL_PATTERNS]
+            first_match = reduce(lambda x, y: x or y, matches)
+            if first_match:
+                return first_match.group(0)
+            raise ValidationError(_("I don't recognize this video url format. "
+            "Try something like http://www.youtube.com/watch?v=Bfli1yuby58."))
         return value
 
 
@@ -163,6 +167,8 @@ class BaseOptionAnswer(BaseAnswerForm):
     def __init__(self, *args, **kwargs):
         super(BaseOptionAnswer, self).__init__(*args, **kwargs)
         choices = [(x, x) for x in self.question.parsed_options]
+        if not self.question.required:
+            choices = [('', '---------',)] + choices
         self.fields['answer'].choices = choices
         
     def clean_answer(self):

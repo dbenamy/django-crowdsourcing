@@ -8,11 +8,12 @@ MODERATE_SUBMISSIONS = getattr(_gs,
                                False)
 
 
+# youtube has a lot of characters in their ids now so use [^&]
+# youtube also likes to add additional query arguments, so no trailing $
 VIDEO_URL_PATTERNS = getattr(
     _gs,
     'CROWDSOURCING_VIDEO_URL_PATTERNS',
-    (r'^http://www\.youtube\.com/watch\?v=[a-zA-Z0-9]+$',)
-    )
+    (r'^http://www\.youtube\.com/watch\?v=[^&]+',))
 
 
 IMAGE_UPLOAD_PATTERN = getattr(_gs,
