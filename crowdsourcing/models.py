@@ -55,6 +55,12 @@ class Survey(models.Model):
     allow_multiple_submissions = models.BooleanField(default=False)
     moderate_submissions = models.BooleanField(
         default=local_settings.MODERATE_SUBMISSIONS)
+    allow_comments = models.BooleanField(
+        default=False,
+        help_text="Allow comments on user submissions.")
+    allow_voting = models.BooleanField(
+        default=False,
+        help_text="Users can vote on submissions.")
     archive_policy = models.IntegerField(
         choices=ARCHIVE_POLICY_CHOICES,
         default=ARCHIVE_POLICY_CHOICES.IMMEDIATE)
@@ -62,6 +68,10 @@ class Survey(models.Model):
     survey_date = models.DateField(blank=True, null=True, editable=False)
     ends_at = models.DateTimeField(null=True, blank=True)
     is_published = models.BooleanField(default=False)
+    email = models.EmailField(
+        blank=True,
+        help_text=("Send a notification to this e-mail whenever someone "
+                   "submits an entry to this survey."))
     site = models.ForeignKey(Site)
     flickr_group_id = models.CharField(
         max_length=60,
@@ -150,6 +160,9 @@ class Survey(models.Model):
         if not self.can_have_public_submissions():
             return self.submission_set.none()
         return self.submission_set.filter(is_public=True)
+
+    def featured_submissions(self):
+        return self.public_submissions().filter(featured=True)
 
     def get_filters(self):
         return self.questions.filter(use_as_filter=True,
@@ -334,6 +347,7 @@ class Submission(models.Model):
     ip_address = models.IPAddressField()
     submitted_at = models.DateTimeField(default=datetime.datetime.now)
     session_key = models.CharField(max_length=40, blank=True, editable=False)
+    featured = models.BooleanField(default=False)
 
     # for moderation
     is_public = models.BooleanField(default=True)
@@ -342,15 +356,19 @@ class Submission(models.Model):
         ordering = ('-submitted_at',)
 
     def to_jsondata(self):
-
         def to_json(v):
             if isinstance(v, ImageFieldFile):
                 return v.url if v else ''
             return v
-        return dict(data=dict(
-            (a.question.fieldname, to_json(a.value))
-            for a in self.answer_set.filter(question__answer_is_public=True)),
-                    submitted_at=self.submitted_at)
+        return_value = dict(data=dict((a.question.fieldname, to_json(a.value))
+                                      for a in self.answer_set.filter(
+                                      question__answer_is_public=True)),
+                            survey=self.survey.slug,
+                            submitted_at=self.submitted_at,
+                            featured=self.featured)
+        if self.user:
+            return_value["user"] = self.user.username
+        return return_value
 
     def get_answer_dict(self):
         try:
@@ -443,7 +461,7 @@ class Answer(models.Model):
                 except Exception as ex:
                     message = "error in syncing to flickr: %s" % str(ex)
                     logging.exception(message)
-    
+
     def __unicode__(self):
         return unicode(self.question)
 
@@ -468,7 +486,7 @@ class SurveyReport(models.Model):
     def get_absolute_url(self):
         return ('survey_report', (), {'slug': self.survey.slug,
                                       'report': self.slug})
-    
+
     class Meta:
         unique_together = (('survey', 'slug'),)
         ordering = ('title',)

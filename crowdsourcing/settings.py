@@ -10,6 +10,8 @@ MODERATE_SUBMISSIONS = getattr(_gs,
 
 # youtube has a lot of characters in their ids now so use [^&]
 # youtube also likes to add additional query arguments, so no trailing $
+# If you have oembed installed, use the oembed configuration and ignore
+# this.
 VIDEO_URL_PATTERNS = getattr(
     _gs,
     'CROWDSOURCING_VIDEO_URL_PATTERNS',
@@ -36,3 +38,19 @@ FLICKR_FROB = getattr(_gs, 'CROWDSOURCING_FLICKR_FROB', '')
 FLICKR_LIVE = getattr(_gs, 'CROWDSOURCING_FLICKR_LIVE', False)
 
 
+FLICKR_TOKENCACHE_PATH = getattr(_gs,
+                                 'CROWDSOURCING_FLICKR_TOKENCACHE_PATH',
+                                 '/tmp/flickr_tokencache')
+
+
+# You can set a function that does additional processing on the submission
+# list before rendering. For example, if your user interface has sorting
+# based on votes, you could set this value. Use a python path to a function
+# that takes a submission list and a request object.
+PRE_REPORT = getattr(_gs, 'CROWDSOURCING_PRE_REPORT', '')
+
+
+SURVEY_EMAIL_FROM = getattr(_gs, 'CROWDSOURCING_SURVEY_EMAIL_FROM', 'donotreply@donotreply.com')
+
+
+SURVEY_ADMIN_SITE = getattr(_gs, 'CROWDSOURCING_SURVEY_ADMIN_SITE', '')
