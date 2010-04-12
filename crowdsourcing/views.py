@@ -37,10 +37,10 @@ def _get_remote_ip(request):
     return request.META['REMOTE_ADDR']
 
 
-def _filter_submissions(survey, request_data):
+def _filter_submissions(survey, request_data, submissions):
     """ Based on the query string, limit the survey results displayed
     both in agregate and listed format. """
-    return extra_from_filters(survey.public_submissions(),
+    return extra_from_filters(submissions,
                               "crowdsourcing_submission.id",
                               survey,
                               request_data)
@@ -186,16 +186,21 @@ def survey_report(request, slug, report='', page=None):
     page = 1 if page is None else get_int_or_404(page)
     survey = _get_survey_or_404(slug)
     # is the survey anything we can actually have a report on?
-    if not survey.can_have_public_submissions():
+    if not (survey.can_have_public_submissions() or request.user.is_staff):
         raise Http404
 
     location_fields = list(survey.get_public_location_fields())
     archive_fields = list(survey.get_public_archive_fields())
     aggregate_fields = list(survey.get_public_aggregate_fields())
-    fields = list(survey.get_public_fields())
+    if request.user.is_staff:
+        fields = list(survey.questions.order_by("order"))
+        submissions = survey.submission_set.all()
+    else:
+        fields = list(survey.get_public_fields())
+        submissions = survey.public_submissions()
     filters = get_filters(survey, request.GET)
 
-    submissions = _filter_submissions(survey, request.GET)
+    submissions = _filter_submissions(survey, request.GET, submissions)
     paginator, page_obj = paginate_or_404(submissions, page)
     pages_to_link = []
     for i in range(page - 5, page + 5):
