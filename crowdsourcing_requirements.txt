@@ -1,0 +1,19 @@
+# This pip requirements file contains all the basic requirements of
+# django-crowdsourcing. To run this file you will need to
+# $ easy_install pip
+# $ pip install -r crowdsourcing_requirements.txt
+
+# Python Image Library for processing image answers.
+PIL>=1.1.6
+
+# for image thumbnailing
+sorl-thumbnail==3.2.5
+
+# for ordering inlines
+-e git://github.com/jpwatts/django-positions.git#egg=django-positions
+
+# For geocoding addresses and address lookups
+geopy
+
+# For building the documentation
+Sphinx
