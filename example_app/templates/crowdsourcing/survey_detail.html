@@ -1,0 +1,25 @@
+<html>
+<head>
+  <title>{{ survey.title }}</title>
+</head>
+<body>
+
+<h1>{{ survey.title }}</h1>
+<p>
+  {% ifequal request.method "POST" %}
+    {{ survey.thanks }}
+  {% else %}
+    {{ survey.description }}
+  {% endifequal %}
+</p>
+{% if forms %}
+  <form method="POST" enctype="multipart/form-data">
+    {% for form in forms %}
+      {{ form.as_p }}
+    {% endfor %}
+    <input type="submit" value="Submit Survey"/>
+  </form>
+{% endif %}
+
+</body>
+</html>
