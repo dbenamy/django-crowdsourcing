@@ -75,14 +75,19 @@ register.simple_tag(filter)
 
 
 def select_filter(wrapper_format, key, label, value, choices, blank=True):
+    """ choices can contain either strings which will be used for both the
+    value and the display, or (value, display) tuples. """
     html = ['<select id="%s" name="%s">' % (key, key,)]
     if blank:
         html.append('<option value="">---------</option>')
     for choice in choices:
-        html.append('<option value="%s"' % choice)
-        if value == u"%s" % choice:
+        value = display = choice
+        if hasattr(choice, "__iter__"):
+            value, display = choice[0], choice[1]
+        html.append('<option value="%s"' % value)
+        if value == u"%s" % value:
             html.append('selected="selected"')
-        html.append('>%s</option>' % choice)
+        html.append('>%s</option>' % display)
     html.append('</select>')
     return filter(wrapper_format, key, label, "\n".join(html))
 register.simple_tag(select_filter)
@@ -408,9 +413,9 @@ def submission_fields(submission,
     for answer in answer_list:
         answers[answer.question] = answer
     for question in fields:
-        out.append('<div class="field">')
         answer = answers.get(question, None)
         if answer and answer.value:
+            out.append('<div class="field">')
             out.append('<label>%s</label>' % question.label)
             if answer.image_answer:
                 try:
@@ -437,7 +442,7 @@ def submission_fields(submission,
                     out.append('<a href="%(val)s">%(val)s</a>' % args)
             else:
                 out.append(escape(answer.value))
-        out.append('</div>')
+            out.append('</div>')
     return mark_safe("\n".join(out))
 register.simple_tag(submission_fields)
 
