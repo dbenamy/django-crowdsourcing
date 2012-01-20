@@ -62,8 +62,8 @@ def _get_remote_ip(request):
 
 def _login_url(request):
     if crowdsourcing_settings.LOGIN_VIEW:
-        next = '?next=%s' % request.path
-        return reverse(crowdsourcing_settings.LOGIN_VIEW) + next
+        start_with = reverse(crowdsourcing_settings.LOGIN_VIEW) + '?next=%s'
+        return start_with % request.path
     return "/?login_required=true"
 
 
@@ -419,7 +419,6 @@ def submissions(request, format):
                     cell.appendChild(doc.createTextNode(u"%s" % value))
         response = HttpResponse(doc.toxml(), mimetype='text/xml')
     elif format == 'html': # mostly for debugging.
-        data_list = []
         keys = get_keys()
         results = [
             "<html><body><table>",
@@ -525,17 +524,21 @@ def _survey_report(request, slug, report, page, templates):
     archive_fields = list(survey.get_public_archive_fields())
     is_staff = request.user.is_staff
     if is_staff:
+        submissions = survey.submission_set.all()
         fields = list(survey.get_fields())
     else:
+        submissions = survey.public_submissions()
         fields = list(survey.get_public_fields())
     filters = get_filters(survey, request.GET)
 
-    public = survey.public_submissions()
     id_field = "crowdsourcing_submission.id"
     if not report_obj.display_individual_results:
-        submissions = public.none()
+        submissions = submissions.none()
     else:
-        submissions = extra_from_filters(public, id_field, survey, request.GET)
+        submissions = extra_from_filters(submissions,
+                                         id_field,
+                                         survey,
+                                         request.GET)
         # If you want to sort based on rating, wire it up here.
         if crowdsourcing_settings.PRE_REPORT:
             pre_report = get_function(crowdsourcing_settings.PRE_REPORT)
@@ -553,14 +556,7 @@ def _survey_report(request, slug, report, page, templates):
         page_obj.object_list,
         include_private_questions=is_staff)
 
-    pages_to_link = []
-    for i in range(page - 5, page + 5):
-        if 1 <= i <= paginator.num_pages:
-            pages_to_link.append(i)
-    if pages_to_link[0] > 1:
-        pages_to_link = [1, False] + pages_to_link
-    if pages_to_link[-1] < paginator.num_pages:
-        pages_to_link = pages_to_link + [False, paginator.num_pages]
+    pages_to_link = pages_to_link_from_paginator(page, paginator)
 
     display_individual_results = all([
         report_obj.display_individual_results,
@@ -583,6 +579,31 @@ def _survey_report(request, slug, report, page, templates):
     return render_to_response(templates, context, _rc(request))
 
 
+def pages_to_link_from_paginator(page, paginator):
+    """ Return an array with numbers where you should link to a page, and False
+    where you should show elipses. For example, if you have 9 pages and you are
+    on page 9, return [1, False, 5, 6, 7, 8, 9]. """
+    pages = []
+    for i in range(page - 4, page + 5):
+        if 1 <= i <= paginator.num_pages:
+            pages.append(i)
+    if pages[0] > 1:
+        pages = [1, False] + pages
+    if pages[-1] < paginator.num_pages:
+        pages = pages + [False, paginator.num_pages]
+
+    DISCARD = -999
+    for i in range(1, len(pages) - 1):
+        if pages[i - 1] + 2 == pages[i + 1]:
+            # Turn [1, False, 3... into [1, 2, 3
+            pages[i] = (pages[i - 1] + pages[i + 1]) / 2
+        elif pages[i - 1] + 1 == pages[i + 1]:
+            # Turn [1, False, 2... into [1, DISCARD, 2...
+            pages[i] = DISCARD
+
+    return [p for p in pages if p != DISCARD]
+
+
 def paginate_or_404(queryset, page, num_per_page=20):
     """
     paginate a queryset (or other iterator) for the given page, returning the
@@ -593,9 +614,7 @@ def paginate_or_404(queryset, page, num_per_page=20):
     paginator = Paginator(queryset, num_per_page)
     try:
         page_obj = paginator.page(page)
-    except EmptyPage:
-        page_obj = paginator.page(paginator.num_pages)
-    except InvalidPage:
+    except EmptyPage, InvalidPage:
         raise Http404
     return paginator, page_obj
 
@@ -608,7 +627,8 @@ def location_question_results(
     question = get_object_or_404(Question.objects.select_related("survey"),
                                  pk=question_id,
                                  answer_is_public=True)
-    if not question.survey.can_have_public_submissions():
+    is_staff = request.user.is_staff
+    if not question.survey.can_have_public_submissions() and not is_staff:
         raise Http404
     featured = limit_results_to = False
     if survey_report_slug:
@@ -624,15 +644,17 @@ def location_question_results(
         for (option, icon) in icon_question.parsed_option_icon_pairs():
             if icon:
                 icon_by_answer[option] = icon
-        for answer in icon_question.answer_set.all().select_related("question"):
+        answer_set = icon_question.answer_set.all()
+        for answer in answer_set.select_related("question"):
             if answer.value in icon_by_answer:
                 icon = icon_by_answer[answer.value]
                 icon_lookup[answer.submission_id] = icon
 
     answers = question.answer_set.filter(
         ~Q(latitude=None),
-        ~Q(longitude=None),
-        submission__is_public=True).order_by("-submission__submitted_at")
+        ~Q(longitude=None)).order_by("-submission__submitted_at")
+    if not is_staff:
+        answers = answers.filter(submission__is_public=True)
     if featured:
         answers = answers.filter(submission__featured=True)
     answers = extra_from_filters(
@@ -642,7 +664,8 @@ def location_question_results(
         request.GET)
     limit_map_answers = int(limit_map_answers) if limit_map_answers else 0
     if limit_map_answers or limit_results_to:
-        answers = answers[:min(filter(None, [limit_map_answers, limit_results_to,]))]
+        answers = answers[:min(filter(None, [limit_map_answers,
+                                             limit_results_to,]))]
     entries = []
     view = "crowdsourcing.views.submission_for_map"
     for answer in answers:
@@ -658,8 +681,45 @@ def location_question_results(
     dump({"entries": entries}, response)
     return response
 
+def location_question_map(
+    request,
+    question_id,
+    display_id,
+    survey_report_slug=""):
+
+    question = Question.objects.get(pk=question_id)
+    if not question.answer_is_public and not request.user.is_staff:
+        raise Http404
+    report = None
+    limit = 0
+
+    if survey_report_slug:
+        report = SurveyReport.objects.get(slug=survey_report_slug,
+                                          survey=question.survey)
+        limit = report.limit_results_to
+    else:
+        report = _default_report(question.survey)
+
+    # This cast is not for validation since the urls file already guaranteed
+    # it would be a nonempty string of digits. It's simply because display_id
+    # is a string.
+    if int(display_id):
+        display = SurveyReportDisplay.objects.get(pk=display_id)
+    else:
+        for d in report.survey_report_displays:
+            if question.pk in [q.pk for q in d.questions()]:
+                display = d
+                display.limit_map_answers = limit
+
+    return render_to_response('crowdsourcing/location_question_map.html', dict(
+        display=display,
+        question=question,
+        report=report))
 
 def submission_for_map(request, id):
     template = 'crowdsourcing/submission_for_map.html'
-    sub = get_object_or_404(Submission.objects, is_public=True, pk=id)
+    if request.user.is_staff:
+        sub = get_object_or_404(Submission.objects, pk=id)
+    else:
+        sub = get_object_or_404(Submission.objects, is_public=True, pk=id)
     return render_to_response(template, dict(submission=sub), _rc(request))
