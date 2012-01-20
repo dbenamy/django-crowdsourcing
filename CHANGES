@@ -1,3 +1,39 @@
+Version 1.1.30
+-----------------------
+* Web crawlers keep requesting wacky pages. Just 404.
+
+Version 1.1.29
+-----------------------
+* don't use // in the popup google map url
+
+Version 1.1.28
+-----------------------
+* better get_function
+
+Version 1.1.27
+-----------------------
+* Broke out pages_to_link_from_paginator, a helpful function others may want to use.
+* A link appears below maps offering to let the user embed the map.
+* Handle multiple choice answers with quotes and html differently.
+* Count bar chart example in the documentation
+* Private submissions should be visible to logged in staff users
+
+Version 1.1.26
+-----------------------
+* If no CROWDSOURCING_SURVEY_EMAIL_FROM setting exists, then try DEFAULT_FROM_EMAIL as well.
+* A popup link appears below google maps which allows the user to pop up a full page view of the map.
+
+Backwards incompatible changes
+* views.py loads the crowdsourcing settings as crowdsoucing_settings instead of local_settings
+
+Version 1.1.25
+-----------------------
+* Tweaked how the views load the email address to send notifications about new entries.
+
+Version 1.1.24
+-----------------------
+* The embedding Javascript displays a correct message when the survey requires a login and the user isn't logged in.
+
 Version 1.1.23
 -----------------------
 * csv includs ip address and session id for staff users

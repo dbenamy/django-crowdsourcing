@@ -3,6 +3,7 @@ import logging
 import re
 
 from django import template
+from django.contrib.sites.models import Site
 from django.core.cache import cache
 from django.core.files.images import get_image_dimensions
 from django.core.urlresolvers import reverse
@@ -341,7 +342,7 @@ def _yahoo_chart(display, unique_id, args):
     return mark_safe("\n".join(out))
 
 
-def google_map(display, question, report):
+def google_map(display, question, report, is_popup=False):
     map_id = "map_%d" % display.order
     detail_id = "map_detail_%d" % question.id
     kwargs = {
@@ -356,19 +357,46 @@ def google_map(display, question, report):
     zoom = number_to_javascript(display.map_zoom)
     map_args = (map_id, detail_id, data_url, lat, lng, zoom)
     out = [
-        '<div class="google_map_wrapper">',
-        '  <h2 class="chart_title">%s</h2>' % display.annotation,
+        '<div class="google_map_wrapper">']
+    if not is_popup:
+        out.append('  <h2 class="chart_title">%s</h2>' % display.annotation)
+    out.extend([
         '  <div id="%s" class="google_map">' % map_id,
         '    ' + img,
         '  </div>',
         '  <div id="%s" class="map_story"></div>' % detail_id,
         '  <script type="text/javascript">',
         '    setupMap("%s", "%s", "%s", %s, %s, %s);' % map_args,
-        '  </script>',
-        '</div>']
+        '  </script>'])
+    if not is_popup:
+        kwargs = dict(
+            question_id=question.pk,
+            display_id=display.pk if display.pk else 0)
+        if report.slug:
+            kwargs["survey_report_slug"] = report.slug
+        url = reverse('location_question_map', kwargs=kwargs)
+        full_url = "http://%s%s" % (Site.objects.get_current().domain, url)
+        out.extend([
+            '  <ul class="map_tools">',
+            '    <li><a href="%s" target="_blank">popout</a></li>' % url,
+            '    <li><a href="#" class="map_embed_link">embed</a></li>',
+            '  </ul>',
+            '  <fieldset class="map_embed" style="display: none;">',
+            '    <p>Copy and paste the HTML below to embed this map onto your web page.</p>',
+            ('    <textarea id="audioplayer_125944_buttons_code" readonly="" rows="2" cols="44">'
+            '&lt;iframe src="%s" height="320" width="500" &gt;&lt;/iframe&gt;</textarea>') % full_url,
+            '    <a class="close-map-button" href="#">Close</a>',
+            '  </fieldset>'])
+    out.append('</div>')
+
     out.append(map_key(question.survey))
     return mark_safe("\n".join(out))
 register.simple_tag(google_map)
+
+
+def popup_google_map(display, question, report):
+    return google_map(display, question, report, is_popup=True)
+register.simple_tag(popup_google_map)
 
 
 def simple_slideshow(display, question, request_GET, css):
