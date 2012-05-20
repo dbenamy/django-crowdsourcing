@@ -51,11 +51,18 @@ register = template.Library()
 
 def yahoo_api():
     return mark_safe("\n".join([
-        '<script src="http://yui.yahooapis.com/3.5.1/build/yui/yui-min.js"></script>',
+        '<script src="http://yui.yahooapis.com/2.8.1/build/yuiloader/yuiloader-min.js"></script>',
         '<style>',
         '  .chart_div { width: 600px; height: 300px; }',
         '</style>']))
 register.simple_tag(yahoo_api)
+
+def google_charts_api():
+    return mark_safe("\n".join([
+        '<style>',
+        '  .chart_div { width: 600px; height: 300px; }',
+        '</style>']))
+register.simple_tag(google_charts_api)
 
 
 def jquery_and_google_api():
@@ -165,8 +172,38 @@ def filters_as_ul(filters):
     return mark_safe("\n".join(out))
 register.simple_tag(filters_as_ul)
 
-
 def yahoo_pie_chart(display, question, request_get, is_staff=False):
+    report = display.get_report()
+    survey = report.survey
+    aggregate = AggregateResultCount(survey,
+                                     question,
+                                     request_get,
+                                     report,
+                                     is_staff=is_staff)
+    if not aggregate.answer_values:
+        return ""
+    fieldname = question.fieldname
+    args = {
+        "answer_string": aggregate.yahoo_answer_string,
+        "option_setup": "",
+        "chart_type": "PieChart",
+        "response_schema": '{fields: ["%s", "count"]}' % fieldname,
+        "options": "dataField: 'count', categoryField: '%s'" % fieldname,
+        "style": """
+            {padding: 20,
+             legend: {display: "right",
+                      padding: 10,
+                      spacing: 5,
+                      font: {family: "Arial",
+                             size: 13
+                            }
+                     }
+            }"""}
+    id_args = (display.index_in_report(), question.id)
+    return _yahoo_chart(display, "%d_%d" % id_args, args)
+register.simple_tag(yahoo_pie_chart)
+
+def google_pie_chart(display, question, request_get, is_staff=False):
     report = display.get_report()
     survey = report.survey
     aggregate = AggregateResultCount(survey,
@@ -191,13 +228,12 @@ def yahoo_pie_chart(display, question, request_get, is_staff=False):
             }""",
         "area" : """
           {left: 0, 
-           top: 0, 
            width:'100%'
         }""",
        }
     id_args = (display.index_in_report(), question.id)
     return _yahoo_chart(display, "%d_%d" % id_args, args)
-register.simple_tag(yahoo_pie_chart)
+register.simple_tag(google_pie_chart)
 
 
 def yahoo_bar_chart(display, request_get, is_staff=False):
@@ -346,35 +382,6 @@ def _google_chart(display, unique_id, args):
   return mark_safe("\n".join(out))
 
 def _yahoo_chart(display, unique_id, args):
-  return _google_chart(display, unique_id, args)
-  out = []
-  out.append('<h2 class="chart_title">%s</h2>' % display.annotation)
-  out.append('<div class="chart_div" id="chart%s"></div>' % unique_id)
-  args.update(
-      data_var='data%s' % unique_id,
-      div_id="chart%s" % unique_id)
-  print args
-  script = """
-      <script type="text/javascript">
-        YUI().use('charts', function(Y) {
-        var options = {%(options)s};
-        var theChart = new Y.Chart({
-          dataProvider: %(answer_string)s,
-          render: "#%(div_id)s",
-          categoryKey: options.categoryField,
-          seriesKeys: [options.dataField],
-          type: "%(chart_type)s",
-          legend: {
-            position: "right",
-          },  
-        });
-      });
-      </script>""" % args
-  out.append(script)
-  return mark_safe("\n".join(out))
-	
-
-def __yahoo_chart(display, unique_id, args):
     out = [
         '<h2 class="chart_title">%s</h2>' % display.annotation,
         '<div class="chart_div" id="chart%s">' % unique_id,
@@ -408,7 +415,6 @@ def __yahoo_chart(display, unique_id, args):
         </script>""" % args
     out.append(script)
     return mark_safe("\n".join(out))
-
 
 def google_map(display, question, report, is_popup=False):
     map_id = "map_%d" % display.order
