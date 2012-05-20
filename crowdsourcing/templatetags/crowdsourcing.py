@@ -1,6 +1,7 @@
 from __future__ import absolute_import
 import logging
 import re
+import json
 
 from django import template
 from django.contrib.sites.models import Site
@@ -50,7 +51,7 @@ register = template.Library()
 
 def yahoo_api():
     return mark_safe("\n".join([
-        '<script src="http://yui.yahooapis.com/2.8.1/build/yuiloader/yuiloader-min.js"></script>',
+        '<script src="http://yui.yahooapis.com/3.5.1/build/yui/yui-min.js"></script>',
         '<style>',
         '  .chart_div { width: 600px; height: 300px; }',
         '</style>']))
@@ -179,19 +180,21 @@ def yahoo_pie_chart(display, question, request_get, is_staff=False):
     args = {
         "answer_string": aggregate.yahoo_answer_string,
         "option_setup": "",
+        "fieldname":  fieldname,
         "chart_type": "PieChart",
         "response_schema": '{fields: ["%s", "count"]}' % fieldname,
-        "options": "dataField: 'count', categoryField: '%s'" % fieldname,
-        "style": """
-            {padding: 20,
-             legend: {display: "right",
-                      padding: 10,
-                      spacing: 5,
-                      font: {family: "Arial",
-                             size: 13
-                            }
-                     }
-            }"""}
+        "legend" : """
+            {position: 'right',
+             textStyle: {fontName: 'Arial',
+                         fontSize: 13
+                        }
+            }""",
+        "area" : """
+          {left: 0, 
+           top: 0, 
+           width:'100%'
+        }""",
+       }
     id_args = (display.index_in_report(), question.id)
     return _yahoo_chart(display, "%d_%d" % id_args, args)
 register.simple_tag(yahoo_pie_chart)
@@ -305,8 +308,73 @@ def _yahoo_bar_line_chart_helper(display,
             return_value.append(issue(message))
     return mark_safe("\n".join(return_value))
 
+def _google_chart(display, unique_id, args):
+  out = []
+  out.append('<div class="chart_div" id="chart%s"></div>' % unique_id)
+  theData = json.loads(args['answer_string'])
+  chartData = []
+  theKeys = [args['fieldname'], 'count']
+  chartData.append(theKeys)
+  for row in theData:
+    chartData.append([row[k] for k in theKeys])
+  args.update(
+    div_id="chart%s" % unique_id,
+    title=display.annotation,
+    chartData=json.dumps(chartData))
+  
+
+  script = """
+    <script type="text/javascript src="https://www.google.com/jsapi"></script>
+    <script type="text/javascript">
+    google.load("visualization", "1", {packages:["corechart"]});
+    google.setOnLoadCallback(drawChart);
+    function drawChart() {
+      var data = google.visualization.arrayToDataTable(%(chartData)s);
+      var options = {
+        title: "%(title)s",
+        legend: %(legend)s,
+        chartArea: %(area)s,
+      
+      };
+      
+      var chart = new google.visualization.%(chart_type)s(document.getElementById("%(div_id)s"));
+      chart.draw(data, options);
+    };
+  </script>""" % args
+  out.append(script)
+  print args
+  return mark_safe("\n".join(out))
 
 def _yahoo_chart(display, unique_id, args):
+  return _google_chart(display, unique_id, args)
+  out = []
+  out.append('<h2 class="chart_title">%s</h2>' % display.annotation)
+  out.append('<div class="chart_div" id="chart%s"></div>' % unique_id)
+  args.update(
+      data_var='data%s' % unique_id,
+      div_id="chart%s" % unique_id)
+  print args
+  script = """
+      <script type="text/javascript">
+        YUI().use('charts', function(Y) {
+        var options = {%(options)s};
+        var theChart = new Y.Chart({
+          dataProvider: %(answer_string)s,
+          render: "#%(div_id)s",
+          categoryKey: options.categoryField,
+          seriesKeys: [options.dataField],
+          type: "%(chart_type)s",
+          legend: {
+            position: "right",
+          },  
+        });
+      });
+      </script>""" % args
+  out.append(script)
+  return mark_safe("\n".join(out))
+	
+
+def __yahoo_chart(display, unique_id, args):
     out = [
         '<h2 class="chart_title">%s</h2>' % display.annotation,
         '<div class="chart_div" id="chart%s">' % unique_id,
