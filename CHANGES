@@ -1,3 +1,6 @@
+Version 1.1.33
+----------------------
+* Added support for Google pie, bar and line charts
 Version 1.1.32
 -----------------------
 * If crowdsourcing from email setting isn't present, use django default if available.
