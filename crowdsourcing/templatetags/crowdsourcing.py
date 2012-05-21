@@ -217,9 +217,10 @@ def google_pie_chart(display, question, request_get, is_staff=False):
     args = {
         "answer_string": aggregate.yahoo_answer_string,
         "option_setup": "",
-        "fieldname":  fieldname,
+        "fieldnames":  [fieldname, 'count'],
         "chart_type": "PieChart",
-        "response_schema": '{fields: ["%s", "count"]}' % fieldname,
+        "hAxis" : "{}",
+        "vAxis" : "{}",
         "legend" : """
             {position: 'right',
              textStyle: {fontName: 'Arial',
@@ -232,7 +233,7 @@ def google_pie_chart(display, question, request_get, is_staff=False):
         }""",
        }
     id_args = (display.index_in_report(), question.id)
-    return _yahoo_chart(display, "%d_%d" % id_args, args)
+    return _google_chart(display, "%d_%d" % id_args, args)
 register.simple_tag(google_pie_chart)
 
 
@@ -243,6 +244,12 @@ def yahoo_bar_chart(display, request_get, is_staff=False):
                                         is_staff=is_staff)
 register.simple_tag(yahoo_bar_chart)
 
+def google_bar_chart(display, request_get, is_staff=False):
+    return _google_bar_line_chart_helper(display,
+                                        request_get,
+                                        "ColumnChart",
+                                        is_staff=is_staff)
+register.simple_tag(google_bar_chart)
 
 def yahoo_line_chart(display, request_get, is_staff=False):
     return _yahoo_bar_line_chart_helper(display,
@@ -251,6 +258,12 @@ def yahoo_line_chart(display, request_get, is_staff=False):
                                         is_staff=is_staff)
 register.simple_tag(yahoo_line_chart)
 
+def google_line_chart(display, request_get, is_staff=False):
+    return _google_bar_line_chart_helper(display,
+                                        request_get,
+                                        "LineChart",
+                                        is_staff=is_staff)
+register.simple_tag(google_line_chart)
 
 def _yahoo_bar_line_chart_helper(display,
                                  request_get,
@@ -344,19 +357,200 @@ def _yahoo_bar_line_chart_helper(display,
             return_value.append(issue(message))
     return mark_safe("\n".join(return_value))
 
+
+def _yahoo_bar_line_chart_helper(display,
+                                 request_get,
+                                 chart_type,
+                                 is_staff=False):
+  
+    y_axes = display.questions()
+    SATC = SURVEY_AGGREGATE_TYPE_CHOICES
+    return_value = []
+    if display.aggregate_type != SATC.COUNT and not y_axes:
+        message = ("This chart uses y axes '%s', none of which are questions "
+                   "in this survey.") % display.fieldnames
+        return issue(message)
+    x_axis = display.x_axis_question()
+    if not x_axis:
+        message = ("This chart uses x axis '%s' which isn't a question in "
+                   "this survey.") % display.x_axis_fieldname
+        return issue(message)
+    single_count = False
+    report = display.get_report()
+    if display.aggregate_type in [SATC.DEFAULT, SATC.SUM]:
+        aggregate_function = "Sum"
+        aggregate = AggregateResultSum(y_axes, x_axis, request_get, report)
+    elif display.aggregate_type == SATC.AVERAGE:
+        aggregate_function = "Average"
+        aggregate = AggregateResultAverage(y_axes, x_axis, request_get, report)
+    elif display.aggregate_type == SATC.COUNT:
+        aggregate_function = "Count"
+        if y_axes:
+            aggregate = AggregateResult2AxisCount(
+                y_axes,
+                x_axis,
+                request_get,
+                report)
+        else:
+            single_count = True
+            survey = x_axis.survey
+            aggregate = AggregateResultCount(
+                survey,
+                x_axis,
+                request_get,
+                report,
+                is_staff=is_staff)
+    if not aggregate.answer_values:
+        return ""
+    answer_string = aggregate.yahoo_answer_string
+    series = []
+    series_format = '{displayName: "%s", yField: "%s", style: {size: 10}}'
+    if single_count:
+        y_axis_label = "Count"
+        fieldnames = ["count", x_axis.fieldname]
+        series.append(series_format % ("Count", "count"))
+    else:
+        y_labels = ", ".join([y.label for y in y_axes])
+        y_axis_label = "%s %s" % (aggregate_function, y_labels)
+        axes = list(y_axes) + [x_axis]
+        fieldnames = [f.fieldname for f in axes]
+        for question in y_axes:
+            series.append(series_format % (question.label, question.fieldname))
+    option_setup_args = (
+        "NumericAxis" if x_axis.is_numeric else "CategoryAxis",
+        x_axis.label,
+        y_axis_label,)
+    option_setup_args = tuple(l.replace('"', r'\"') for l in option_setup_args)
+    index = display.index_in_report()
+    option_setup = """
+        var xAxis = new YAHOO.widget.%s();
+        xAxis.title = "%s";
+        var yAxis = new YAHOO.widget.NumericAxis();
+        yAxis.title = "%s";
+        """ % option_setup_args
+    options = {
+        "series": "[%s]" % ",\n".join(series),
+        "xField": '"%s"' % x_axis.fieldname,
+        "xAxis": "xAxis",
+        "yAxis": "yAxis"}
+    options = ",\n".join(["%s: %s" % item for item in options.items()])
+    fieldnames_str = ", ".join(['"%s"' % f for f in fieldnames])
+    args = {
+        "answer_string": answer_string,
+        "option_setup": option_setup,
+        "chart_type": chart_type,
+        "response_schema": '{fields: [%s]}' % fieldnames_str,
+        "style": '{xAxis: {labelRotation: -45}, yAxis: {titleRotation: -90}}',
+        "options": options}
+    return_value.append(_yahoo_chart(display, str(index), args))
+    for question in y_axes:
+        if not question.is_numeric:
+            message = ("%s isn't numeric so it doesn't work as a y axis. "
+                       "Update the fieldnames of this Survey Report Display.")
+            message = message % question.fieldname
+            return_value.append(issue(message))
+    return mark_safe("\n".join(return_value))
+
+def _google_bar_line_chart_helper(display,
+                                 request_get,
+                                 chart_type,
+                                 is_staff=False):
+    y_axes = display.questions()
+    SATC = SURVEY_AGGREGATE_TYPE_CHOICES
+    return_value = []
+    if display.aggregate_type != SATC.COUNT and not y_axes:
+        message = ("This chart uses y axes '%s', none of which are questions "
+                   "in this survey.") % display.fieldnames
+        return issue(message)
+    x_axis = display.x_axis_question()
+    if not x_axis:
+        message = ("This chart uses x axis '%s' which isn't a question in "
+                   "this survey.") % display.x_axis_fieldname
+        return issue(message)
+    single_count = False
+    report = display.get_report()
+    if display.aggregate_type in [SATC.DEFAULT, SATC.SUM]:
+        aggregate_function = "Sum"
+        aggregate = AggregateResultSum(y_axes, x_axis, request_get, report)
+    elif display.aggregate_type == SATC.AVERAGE:
+        aggregate_function = "Average"
+        aggregate = AggregateResultAverage(y_axes, x_axis, request_get, report)
+    elif display.aggregate_type == SATC.COUNT:
+        aggregate_function = "Count"
+        if y_axes:
+            aggregate = AggregateResult2AxisCount(
+                y_axes,
+                x_axis,
+                request_get,
+                report)
+        else:
+            single_count = True
+            survey = x_axis.survey
+            aggregate = AggregateResultCount(
+                survey,
+                x_axis,
+                request_get,
+                report,
+                is_staff=is_staff)
+    if not aggregate.answer_values:
+        return ""
+    answer_string = aggregate.yahoo_answer_string
+    if single_count:
+        y_axis_label = "Count"
+        fieldnames = [x_axis.fieldname, "count"]
+    else:
+        y_labels = ", ".join([y.label for y in y_axes])
+        y_axis_label = "%s %s" % (aggregate_function, y_labels)
+        axes = [x_axis] +  list(y_axes)
+        fieldnames = [f.fieldname for f in axes]
+    index = display.index_in_report()
+    args = {
+        "answer_string": answer_string,
+        "chart_type": chart_type,
+        "fieldnames": fieldnames,
+        "legend" : "{position: 'none'}",
+        "hAxis" : "{showTextEvery: 1, slantedText: 'true',slantedTextAngle: '60', title: '%s', }" % x_axis.label,
+        "vAxis" : "{viewWindowMode: 'maximized', title: '%s', minValue: 0, baseline: 0}" % y_axis_label,
+        "pointSize": 2,
+        "area" : "{top: '0'}",
+        }
+    return_value.append(_google_chart(display, str(index), args))
+    for question in y_axes:
+        if not question.is_numeric:
+            message = ("%s isn't numeric so it doesn't work as a y axis. "
+                       "Update the fieldnames of this Survey Report Display.")
+            message = message % question.fieldname
+            return_value.append(issue(message))
+    return mark_safe("\n".join(return_value))
+
 def _google_chart(display, unique_id, args):
   out = []
   out.append('<div class="chart_div" id="chart%s"></div>' % unique_id)
   theData = json.loads(args['answer_string'])
   chartData = []
-  theKeys = [args['fieldname'], 'count']
-  chartData.append(theKeys)
+  fieldnames = args['fieldnames']
+  chartData.append(fieldnames)
   for row in theData:
-    chartData.append([row[k] for k in theKeys])
+    chartData.append([row[k] for k in fieldnames])
   args.update(
     div_id="chart%s" % unique_id,
     title=display.annotation,
-    chartData=json.dumps(chartData))
+    chartData=json.dumps(chartData))  
+
+  extraOpts = ""
+  if args['chart_type'] != "PieChart":
+    # Column and Line
+    extraOpts += """
+         hAxis: %(hAxis)s,
+         vAxis: %(vAxis)s,
+    """ % args
+
+  if args['chart_type'] == "LineChart":
+      extraOpts += """
+         pointSize: %(pointSize)s,
+      """ % args
+
+  args.update(extraOpts=extraOpts)
   
 
   script = """
@@ -370,6 +564,7 @@ def _google_chart(display, unique_id, args):
         title: "%(title)s",
         legend: %(legend)s,
         chartArea: %(area)s,
+        %(extraOpts)s
       
       };
       
