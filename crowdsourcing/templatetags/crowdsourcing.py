@@ -227,10 +227,7 @@ def google_pie_chart(display, question, request_get, is_staff=False):
                          fontSize: 13
                         }
             }""",
-        "area" : """
-          {left: 0, 
-           width:'100%'
-        }""",
+        "area" : "{left: 0, width:'100%' }",
        }
     id_args = (display.index_in_report(), question.id)
     return _google_chart(display, "%d_%d" % id_args, args)
@@ -526,18 +523,22 @@ def _google_bar_line_chart_helper(display,
 def _google_chart(display, unique_id, args):
   out = []
   out.append('<div class="chart_div" id="chart%s"></div>' % unique_id)
+  # Transform the data to the form and order Google wants
+
   theData = json.loads(args['answer_string'])
   chartData = []
   fieldnames = args['fieldnames']
   chartData.append(fieldnames)
   for row in theData:
     chartData.append([row[k] for k in fieldnames])
+
   args.update(
     div_id="chart%s" % unique_id,
     title=display.annotation,
     chartData=json.dumps(chartData))  
 
   extraOpts = ""
+  # Need graph-type-specific options
   if args['chart_type'] != "PieChart":
     # Column and Line
     extraOpts += """
