@@ -1,0 +1,5 @@
+Django-crowdsourcing is an MIT-licensed survey and report tool for journalists, supporting many types of survey questions and a wide variety of reporting options. A reusable Django application, it is designed to be installed easily in any Django site, including multi-site installations. Its surveys are entirely configured within the admin interface that ships with Django.
+
+While the primary focus of development is support for crowdsourcing projects, the survey tool is general purpose and can be used for a variety of applications. It is easy enough to handle simple polls with pie charts, yet powerful enough to handle complicated surveys with rich multimedia responses plotted on a map with custom icons.
+
+For more information, see our [Pypi](http://pypi.python.org/pypi/django-crowdsourcing) page.
